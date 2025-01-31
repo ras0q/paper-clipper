@@ -1,275 +1,45 @@
 import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
-import * as pdfjs from "pdfjs-dist";
-import type { TextItem } from "pdfjs-dist/types/src/display/api";
-import { z } from "zod";
+import {
+  constructMarkdown,
+  Instructions,
+  instructionsSchema,
+} from "./src/md_constructor.ts";
+import { analyzePDF, mergeDocumentItems } from "./src/pdf_analyzer.ts";
+import { generatePrompt } from "./src/prompt.ts";
 
-// pdfjs.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
-
-const pdfPath = "./sample.pdf";
-
-const pdfDocument = await pdfjs.getDocument(pdfPath).promise;
-const outline = await pdfDocument.getOutline();
-
-const pages: {
-  s: string;
-  h: number;
-  y: number;
-}[][][] = [];
-const pageOperators: unknown[][][] = [];
-
-for (let i = 1; i <= pdfDocument.numPages; i++) {
-  const page = await pdfDocument.getPage(i);
-
-  const operators = await page.getOperatorList();
-  const operationCommands = operators.fnArray.map((fn, i) => {
-    const args = fn === pdfjs.OPS.showText
-      ? operators.argsArray[i]
-        .flatMap((arg: { unicode: string }[]) => arg.map((arg) => arg.unicode))
-        .join("")
-      : operators.argsArray[i];
-
-    // const fnName =
-    //   Object.entries(pdfjs.OPS).find(([_, value]) => value === fn)?.[0] || fn;
-
-    return [fn, args];
-  });
-  pageOperators.push(operationCommands);
-
-  const textContent = await page.getTextContent();
-  const textItems = textContent.items as TextItem[];
-
-  const lineBlocks: TextItem[][] = [[]];
-  for (const item of textItems) {
-    const lastBlock = lineBlocks[lineBlocks.length - 1];
-    if (lastBlock.length === 0) {
-      lastBlock.push(item);
-      if (item.hasEOL) {
-        lineBlocks.push([]);
-      }
-      continue;
-    }
-
-    if (item.str.trim().length === 0) {
-      continue;
-    }
-
-    const lastItem = lastBlock[lastBlock.length - 1];
-
-    if (item.height !== 0 && item.height !== lastItem.height) {
-      lastBlock.push(item);
-      continue;
-    }
-
-    const delimeter = /^[a-zA-Z]/.test(item.str) ? " " : "";
-    lastItem.str += delimeter + item.str.trimStart();
-
-    if (item.hasEOL) {
-      lineBlocks.push([]);
-    }
-  }
-
-  pages.push(
-    lineBlocks.map((blockItems) =>
-      blockItems.map((item) => ({
-        s: item.str,
-        h: item.height,
-        y: parseFloat(item.transform[5].toFixed(1)),
-      }))
-    ),
-  );
+const pdfPath = Deno.args[0];
+if (!pdfPath) {
+  throw "Please provide a PDF file path";
 }
 
-// Merge consecutive lineBlocks with a single element and height equal to textHeight
-const mergedPages: typeof pages = [];
-for (const page of pages) {
-  const mergedPage: typeof page = [];
-  for (let i = 0; i < page.length; i++) {
-    const currentBlocks = page[i];
-    if (currentBlocks.length !== 1 || currentBlocks[0].h !== 1) {
-      mergedPage.push(currentBlocks);
-      continue;
-    }
-
-    const prevBlocks = mergedPage[mergedPage.length - 1];
-    if (!prevBlocks || prevBlocks.length !== 1 || prevBlocks[0].h !== 1) {
-      mergedPage.push(currentBlocks);
-      continue;
-    }
-
-    const delimeter = /^[a-zA-Z]/.test(currentBlocks[0].s) ? " " : "";
-    prevBlocks[0].s += delimeter + currentBlocks[0].s.trimStart();
-  }
-
-  mergedPages.push(mergedPage);
+const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
+if (!openaiApiKey) {
+  throw "Please provide an OpenAI API key";
 }
 
 const tempDir = `./output/output_${Date.now()}`;
 await Deno.mkdir(tempDir, { recursive: true });
 
-// Use the most common height as the text height
-const heights = pages
-  .flat()
-  .flat()
-  .map((block) => block.h)
-  .reduce((acc, h) => {
-    acc[h] = (acc[h] || 0) + 1;
-    return acc;
-  }, {} as Record<number, number>);
-const textHeight = Object.entries(heights).reduce(
-  (acc, [h, count]) => {
-    if (count > acc.count) {
-      return { height: Number(h), count };
-    }
-    return acc;
-  },
-  { height: 0, count: 0 },
-).height;
+const { outline, documentItems, textHeight } = await analyzePDF(pdfPath);
 
-const items = mergedPages.flatMap((page, i) =>
-  page.flatMap((block, j) =>
-    block.map((item, k) => ({
+const mergedDocumentItems = mergeDocumentItems(documentItems);
+const flattenItems = mergedDocumentItems.flatMap((pageItems, i) =>
+  pageItems.flatMap((items, j) =>
+    items.map((item, k) => ({
       ...item,
       i: `${i}-${j}-${k}`,
       h: parseFloat((item.h / textHeight).toFixed(3)),
     }))
   )
 );
-Deno.writeTextFileSync(
-  `${tempDir}/items.json`,
-  JSON.stringify(items),
-);
-
+Deno.writeTextFileSync(`${tempDir}/items.json`, JSON.stringify(flattenItems));
 console.log("Items written");
-
-function simplifyOutline(documentOutline: typeof outline): {
-  title: string;
-  items?: ReturnType<typeof simplifyOutline>;
-}[] {
-  if (!documentOutline) return [];
-
-  return documentOutline.map((item) => {
-    const simplifiedItem: ReturnType<typeof simplifyOutline>[number] = {
-      title: item.title,
-    };
-    if (item.items && item.items.length > 0) {
-      simplifiedItem.items = simplifyOutline(item.items);
-    }
-    return simplifiedItem;
-  });
-}
-
-const simplifiedOutline = simplifyOutline(outline);
-Deno.writeTextFileSync(
-  `${tempDir}/outline.json`,
-  JSON.stringify(simplifiedOutline, null, 2),
-);
 
 const openai = new OpenAI({
   baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-  apiKey: Deno.env.get("OPENAI_API_KEY")!,
+  apiKey: openaiApiKey,
 });
-
-const requestJSON = JSON.stringify({
-  outline: simplifiedOutline,
-  items,
-});
-
-const prompt = `
-Please analyze the provided PDF data and generate a JSON object containing instructions for converting it to Markdown. The JSON object MUST be formatted to be easily embeddable within JavaScript code and stored as \`response.json\`.
-
-The PDF data is structured as follows:
-
-\`\`\`json
-{
-  "outline": [
-    {
-      "title": "[string]",
-      "items": [
-        { "title": "[string]" },
-        { "title": "[string]" },
-         ...
-      ]
-    },
-    {
-      "title": "[string]"
-    },
-    ...
-  ],
-  "items": [
-    {
-      "i": "[string]",
-      "h": "[number]",
-      "s": "[string]",
-      "y": "[number]"
-    },
-    {
-      "i": "[string]",
-      "h": "[number]",
-      "s": "[string]",
-      "y": "[number]"
-    },
-    ...
-  ]
-}
-\`\`\`
-
-- \`outline\`: An array of objects, each representing a section in the document outline. Each object has a \`title\` property (string) and may have an optional \`items\` property, which is an array of objects with \`title\` properties (strings), forming a nested structure.
-- \`items\`: An array of objects, each representing a text item in the PDF content. Each object has the following properties:
-    - \`i\`: A unique identifier for the text item (string).
-    - \`h\`: The height of the text (number).
-    - \`s\`: The text content (string).
-    - \`y\`: The y-coordinate of the text (number).
-
-You MUST use the following three **shortened** instructions to process each item:
-
-- \`"o"\`: Output the raw text content associated with the item ID directly. This instruction has no further arguments.
-- \`"x"\`: Omit (exclude) the text content associated with the item ID. This instruction has no further arguments.
-- \`"r"\`: Replace the text content associated with the item ID with the provided string. This instruction takes exactly one argument, which is the replacement string in Markdown format (for equations, tables, headings etc).
-
-The JSON object MUST have the following structure:
-
-\`\`\`json
-{
-  "x": ["itemID1", "itemID2", ...],
-  "r": [["itemID3", "replaced content"], ...]
-}
-\`\`\`
-
-Where:
-
-- The JSON object MUST contain two keys: \`"x"\` and \`"r"\`.
-- The value associated with the key \`"x"\` MUST be an array of strings. Each string in this array MUST be an \`itemID\` that should be omitted from the output.
-- The value associated with the key \`"r"\` MUST be an array of arrays. Each inner array MUST have exactly two elements:
-    - The first element MUST be an \`itemID\` that should be replaced.
-    - The second element MUST be the replacement string in Markdown format.
-- If no instruction is explicitly provided for an \`itemID\`, it MUST be treated as if the instruction \`"o"\` was given. Therefore, no \`itemID\` that will use the \`"o"\` instruction MUST appear in either the \`"x"\` or \`"r"\` arrays.
-- When using \`"r"\`, the replacement string provided as an argument MUST be the final Markdown-formatted string, and it MUST not include the original text content associated with the item.
-- Each unique \`itemID\` MUST appear at most once in the JSON object (either in the \`"x"\` array or as the first element of an inner array in the \`"r"\` array).
-- If a logical content like a paragraph, a heading, or a math expression is constructed by multiple item ids, you MUST apply \`"r"\` to the first item id and add the following item ids to the \`"x"\` array.
-
-Follow these guidelines:
-
-1. You MUST use the \`outline\` data to create appropriate headings (h1, h2, h3, etc.).
-2. You MUST identify and convert any structured data (tables, lists, etc.) and special formats (mathematical expressions) to the appropriate Markdown. You MUST enclose mathematical expressions in \`$$...$$\`.
-3. If a given item MUST be omitted from the output (such as page numbers, headers, footers, captions or authors), you MUST add its \`itemID\` to the \`"x"\` array.
-4. If a given item MUST be replaced with markdown formatted content, you MUST create an inner array with the \`itemID\` and the markdown string as two elements and add this inner array to the \`"r"\` array.
-5. The JSON object MUST be minified to reduce the size.
-6. You MUST escape any backquotes (\`) within the generated JSON, using \`\\\` characters.
-
-Here's the PDF data (JSON):
-
-\`\`\`json:request.json
-${requestJSON}
-\`\`\`
-`;
-Deno.writeTextFileSync(`${tempDir}/prompt.md`, prompt);
-
-const responseSchema = z.object({
-  x: z.array(z.string()),
-  r: z.array(z.array(z.string())),
-});
-type Response = z.infer<typeof responseSchema>;
 
 const completion = await openai.chat.completions.create({
   model: "gemini-2.0-flash-exp",
@@ -280,54 +50,38 @@ const completion = await openai.chat.completions.create({
     },
     {
       role: "user",
-      content: prompt,
+      content: generatePrompt(JSON.stringify({
+        outline,
+        items: flattenItems,
+      })),
     },
   ],
   stream: true,
   temperature: 0,
   response_format: zodResponseFormat(
-    responseSchema,
+    instructionsSchema,
     "response",
   ),
 });
 
-const filename = `${tempDir}/response.json`;
+const responseFilePath = `${tempDir}/response.json`;
 for await (const chunk of completion) {
   Deno.writeTextFile(
-    filename,
+    responseFilePath,
     chunk.choices[0].delta.content ?? "❓",
     { append: true },
   );
 }
-
-console.log(`Response written to ${filename}`);
-
-// constcution step
+console.log("API Response written");
 
 const decoder = new TextDecoder();
-const response = decoder.decode(Deno.readFileSync(filename));
+const response = decoder.decode(Deno.readFileSync(responseFilePath));
 const jsonResponse = response.match(/{.*}/s)?.[0] ?? "";
 if (!jsonResponse) {
-  console.error("No JSON response found");
-  Deno.exit(1);
+  throw "No JSON response found";
 }
-const { x, r }: Response = JSON.parse(jsonResponse);
+const instructions: Instructions = JSON.parse(jsonResponse);
 
-const markdown = items
-  .map((item) => {
-    if (x.includes(item.i)) {
-      return "";
-    }
-
-    const replacement = r.find(([id]) => id === item.i);
-    if (replacement) {
-      return "\n" + replacement[1];
-    }
-
-    return " " + item.s;
-  })
-  .join("");
-
+const markdown = constructMarkdown(instructions, flattenItems);
 Deno.writeTextFileSync(`${tempDir}/output.md`, markdown);
-
-console.log(`Output written to ${tempDir}/output.md`);
+console.log("Output written");

@@ -5,5 +5,6 @@
   "[typescript]": {
     "editor.defaultFormatter": "denoland.vscode-deno"
   },
-  "deno.enable": true
+  "deno.enable": true,
+  "deno.path": "C:\\Users\\kira\\.deno\\bin\\deno.exe"
 }
