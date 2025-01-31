@@ -1,12 +1,10 @@
 import OpenAI from "openai";
-import { zodResponseFormat } from "openai/helpers/zod";
 import * as pdfjs from "pdfjs-dist";
 import type { TextItem } from "pdfjs-dist/types/src/display/api";
-import { z } from "zod";
 
 // pdfjs.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
 
-const pdfPath = "./sample2.pdf";
+const pdfPath = "./sample.pdf";
 
 const pdfDocument = await pdfjs.getDocument(pdfPath).promise;
 const outline = await pdfDocument.getOutline();
@@ -183,45 +181,52 @@ const requestJSON = JSON.stringify({
 });
 
 const prompt = `
-Please analyze the provided PDF data and generate a JSON object containing instructions for converting it to Markdown. The JSON object should be formatted to be easily embeddable within JavaScript code and stored as \`response.json\`.
+Please analyze the provided PDF data and generate a JSON object containing instructions for converting it to Markdown. The JSON object MUST be formatted to be easily embeddable within JavaScript code and stored as \`response.json\`.
 
 The PDF data is structured as follows:
 
 - \`outline\`: Document outline containing titles and sections.
 - \`pages\`: Content of each page, divided into blocks and items. Each item has an id (\`i\`), text content (\`s\`), height (\`h\`), and y-coordinate (\`y\`).
 
-The JSON object should have the following structure:
+You MUST use the following three **shortened** instructions to process each item:
+
+- \`"o"\`: Output the raw text content associated with the item ID directly. This instruction has no further arguments.
+- \`"x"\`: Omit (exclude) the text content associated with the item ID. This instruction has no further arguments.
+- \`"r"\`: Replace the text content associated with the item ID with the provided string. This instruction takes exactly one argument, which is the replacement string in Markdown format (for equations, tables, headings etc).
+
+The JSON object MUST have the following structure:
 
 \`\`\`json
 {
   "instructions": [
     [ "[itemID]", "[instruction]", "[argument1]", "[argument2]", ... ],
-     [ "[itemID]", "[instruction]", "[argument1]", "[argument2]", ... ],
-     ...
+    [ "[itemID]", "[instruction]", "[argument1]", "[argument2]", ... ],
+    ...
   ]
 }
 \`\`\`
 
 Where:
 
-- The JSON object contains a single key named \`"instructions"\` which has an array as its value.
-- Each element in the \`instructions\` array is a sub-array which represents an instruction for a single item.
-- The first element of the sub-array (\`"[itemID]"\`) is the unique identifier for a text item (e.g., "0-0-0").
-- The second element of the sub-array (\`"[instruction]"\`) is a command to process the text item, which can be one of the following:
-  - \`"out"\`: Output the raw text content associated with the item ID directly. This instruction has no further arguments in the sub-array.
-  - \`"omit"\`: Omit the text content associated with the item ID. This instruction has no further arguments in the sub-array.
-  - \`"replace"\`: Replace the text content associated with the item ID with the provided string. This instruction takes exactly one argument, which is the replacement string in Markdown format (for equations, tables, headings etc). This argument should be the third element of the sub-array.
-- If a logical content like paragraph, a heading or a math expression is constructed by multiple item ids, please apply \`replace\` to the first item id and \`omit\` to the following items.
+- The JSON object MUST contain a single key named \`"instructions"\` which has an array as its value.
+- Each element in the \`instructions\` array MUST be a sub-array which represents an instruction for a single item.
+- The first element of the sub-array (\`"[itemID]"\`) MUST be the unique identifier for a text item (e.g., "0-0-0").
+- The second element of the sub-array (\`"[instruction]"\`) MUST be a command to process the text item, which MUST be one of the three **shortened** instructions (\`"o"\`, \`"x"\`, or \`"r"\`) described above.
+- If the instruction is \`"r"\`, the third element MUST be the replacement string in Markdown format.
+- The instructions from this JSON MUST be executed sequentially for each item, and the resulting text MUST be joined together without any separator or new line.
+- **If no instruction is explicitly provided for an \`itemID\`, it MUST be treated as if the instruction \`"o"\` was given. Therefore,  the \`"o"\` instruction MUST NEVER appear in the \`instructions\` array. The \`instructions\` array MUST ONLY include items with the \`"x"\` or \`"r"\` instructions.**
+- When using \`"r"\`, the replacement string provided as an argument MUST be the final Markdown-formatted string, and it MUST not include the original text content associated with the item.
+- Each unique \`itemID\` MUST appear only once in the \`instructions\` array.
+- If a logical content like a paragraph, a heading, or a math expression is constructed by multiple item ids, you MUST apply \`"r"\` to the first item id and \`"x"\` to the following items.
 
 Follow these guidelines:
 
-1. Use the \`outline\` data to create appropriate headings (h1, h2, h3, etc.).
-2. Identify and convert any structured data (tables, lists, etc.) and special formats (mathematical expressions) to the appropriate Markdown. Enclose mathematical expressions in \`$$...$$\`.
-3. If a given item should be omitted from the output (such as page numbers, headers, footers, captions or authors), use the \`"omit"\` command.
-4. Use the \`"out"\` command to output an item's raw text content if no special formatting or omission is required.
-5. If a given item should be replaced with markdown formatted content, use \`"replace"\` command and pass markdown formatted text as argument.
-6. The JSON object should be minified to reduce the size.
-7. Escape any backquotes (\`) within the generated JSON, using \`\\\` characters.
+1. You MUST use the \`outline\` data to create appropriate headings (h1, h2, h3, etc.).
+2. You MUST identify and convert any structured data (tables, lists, etc.) and special formats (mathematical expressions) to the appropriate Markdown. You MUST enclose mathematical expressions in \`$$...$$\`.
+3. If a given item MUST be omitted from the output (such as page numbers, headers, footers, captions or authors), you MUST use the \`"x"\` command.
+4. If a given item MUST be replaced with markdown formatted content, you MUST use the \`"r"\` command and pass markdown formatted text as argument.
+5. The JSON object MUST be minified to reduce the size.
+6. You MUST escape any backquotes (\`) within the generated JSON, using \`\\\` characters.
 
 Here's the PDF data (JSON):
 
@@ -279,16 +284,23 @@ if (!jsonResponse) {
 const { instructions }: { instructions: string[][] } = JSON.parse(jsonResponse);
 
 const items = pagesWithItemID.flat().flat();
-const markdown = instructions.map(([itemID, instruction, ...args]) => {
-  switch (instruction) {
-    case "out":
-      return " " + (items.find((item) => item.i === itemID)?.s ?? "");
-    case "omit":
+const markdown = items.map((item) => {
+  const instruction = instructions.find(([id]) => id === item.i);
+  if (!instruction) {
+    return " " + item.s;
+  }
+
+  const [, command, ...args] = instruction;
+  switch (command) {
+    case "x":
       return "";
-    case "replace":
+    case "r":
       return "\n" + args[0];
+    case "o":
+      console.warn("`o` command not expected");
+      return " " + item.s;
     default:
-      return "";
+      throw new Error(`Unknown command: ${command}`);
   }
 }).join("");
 
