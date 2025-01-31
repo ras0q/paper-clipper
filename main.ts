@@ -80,33 +80,6 @@ for (let i = 1; i <= pdfDocument.numPages; i++) {
   );
 }
 
-// Use the most common height as the text height
-const heights = pages
-  .flat()
-  .flat()
-  .map((block) => block.h)
-  .reduce((acc, h) => {
-    acc[h] = (acc[h] || 0) + 1;
-    return acc;
-  }, {} as Record<number, number>);
-const textHeight = Object.entries(heights).reduce(
-  (acc, [h, count]) => {
-    if (count > acc.count) {
-      return { height: Number(h), count };
-    }
-    return acc;
-  },
-  { height: 0, count: 0 },
-).height;
-
-for (const page of pages) {
-  for (const lineBlocks of page) {
-    for (const block of lineBlocks) {
-      block.h = parseFloat((block.h / textHeight).toFixed(3));
-    }
-  }
-}
-
 // Merge consecutive lineBlocks with a single element and height equal to textHeight
 const mergedPages: typeof pages = [];
 for (const page of pages) {
@@ -134,20 +107,40 @@ for (const page of pages) {
 const tempDir = `./output/output_${Date.now()}`;
 await Deno.mkdir(tempDir, { recursive: true });
 
-const pagesWithItemID = mergedPages.map((page, i) =>
-  page.map((block, j) =>
+// Use the most common height as the text height
+const heights = pages
+  .flat()
+  .flat()
+  .map((block) => block.h)
+  .reduce((acc, h) => {
+    acc[h] = (acc[h] || 0) + 1;
+    return acc;
+  }, {} as Record<number, number>);
+const textHeight = Object.entries(heights).reduce(
+  (acc, [h, count]) => {
+    if (count > acc.count) {
+      return { height: Number(h), count };
+    }
+    return acc;
+  },
+  { height: 0, count: 0 },
+).height;
+
+const items = mergedPages.flatMap((page, i) =>
+  page.flatMap((block, j) =>
     block.map((item, k) => ({
-      i: `${i}-${j}-${k}`,
       ...item,
+      i: `${i}-${j}-${k}`,
+      h: parseFloat((item.h / textHeight).toFixed(3)),
     }))
   )
 );
 Deno.writeTextFileSync(
-  `${tempDir}/pages.json`,
-  JSON.stringify(pagesWithItemID, null, 2),
+  `${tempDir}/items.json`,
+  JSON.stringify(items),
 );
 
-console.log(`Pages written to ${tempDir}/pages.json`);
+console.log("Items written");
 
 function simplifyOutline(documentOutline: typeof outline): {
   title: string;
@@ -179,7 +172,7 @@ const openai = new OpenAI({
 
 const requestJSON = JSON.stringify({
   outline: simplifiedOutline,
-  pages: pagesWithItemID,
+  items,
 });
 
 const prompt = `
@@ -187,8 +180,46 @@ Please analyze the provided PDF data and generate a JSON object containing instr
 
 The PDF data is structured as follows:
 
-- \`outline\`: Document outline containing titles and sections.
-- \`pages\`: Content of each page, divided into blocks and items. Each item has an id (\`i\`), text content (\`s\`), height (\`h\`), and y-coordinate (\`y\`).
+\`\`\`json
+{
+  "outline": [
+    {
+      "title": "[string]",
+      "items": [
+        { "title": "[string]" },
+        { "title": "[string]" },
+         ...
+      ]
+    },
+    {
+      "title": "[string]"
+    },
+    ...
+  ],
+  "items": [
+    {
+      "i": "[string]",
+      "h": "[number]",
+      "s": "[string]",
+      "y": "[number]"
+    },
+    {
+      "i": "[string]",
+      "h": "[number]",
+      "s": "[string]",
+      "y": "[number]"
+    },
+    ...
+  ]
+}
+\`\`\`
+
+- \`outline\`: An array of objects, each representing a section in the document outline. Each object has a \`title\` property (string) and may have an optional \`items\` property, which is an array of objects with \`title\` properties (strings), forming a nested structure.
+- \`items\`: An array of objects, each representing a text item in the PDF content. Each object has the following properties:
+    - \`i\`: A unique identifier for the text item (string).
+    - \`h\`: The height of the text (number).
+    - \`s\`: The text content (string).
+    - \`y\`: The y-coordinate of the text (number).
 
 You MUST use the following three **shortened** instructions to process each item:
 
@@ -282,26 +313,6 @@ if (!jsonResponse) {
 }
 const { x, r }: Response = JSON.parse(jsonResponse);
 
-const items = pagesWithItemID.flat().flat();
-// const markdown = items.map((item) => {
-//   const instruction = instructions.find(([id]) => id === item.i);
-//   if (!instruction) {
-//     return " " + item.s;
-//   }
-
-//   const [, command, ...args] = instruction;
-//   switch (command) {
-//     case "x":
-//       return "";
-//     case "r":
-//       return "\n" + args[0];
-//     case "o":
-//       console.warn("`o` command not expected");
-//       return " " + item.s;
-//     default:
-//       throw new Error(`Unknown command: ${command}`);
-//   }
-// }).join("");
 const markdown = items
   .map((item) => {
     if (x.includes(item.i)) {
