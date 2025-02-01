@@ -1,5 +1,5 @@
-import * as pdfjs from "pdfjs-dist";
-import type { TextItem } from "pdfjs-dist/types/src/display/api";
+import * as pdfjs from "npm:pdfjs-dist@4.10.38";
+import type { TextItem } from "npm:pdfjs-dist@4.10.38/types/src/display/api";
 
 export type ResolvedItem = {
   s: string;

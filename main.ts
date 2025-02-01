@@ -1,6 +1,6 @@
-import OpenAI from "openai";
+import OpenAI from "npm:openai@4.82.0";
 import { analyzePDF } from "./src/pdf_analyzer.ts";
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.d.ts";
+import type { ChatCompletionMessageParam } from "npm:openai@4.82.0/resources/chat/completions.d.ts";
 import { constructMarkdown, OutputItem } from "./src/md_constructor.ts";
 
 const pdfPath = Deno.args[0];
