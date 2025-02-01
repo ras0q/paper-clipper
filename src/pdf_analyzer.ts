@@ -51,9 +51,7 @@ export const analyzePDF = async (path: string) => {
       }
 
       const lastItem = pageItems[pageItems.length - 1];
-      const isSameBlock =
-        (item.height === 0 || item.height === lastItem.height) &&
-        item.fontName === lastItem.fontName;
+      const isSameBlock = item.height === 0 || item.height === lastItem.height;
       if (!isSameBlock) {
         pageItems.push(item);
         continue;
