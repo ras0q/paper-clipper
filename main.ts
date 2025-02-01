@@ -1,13 +1,7 @@
 import OpenAI from "openai";
-import { zodResponseFormat } from "openai/helpers/zod";
-import {
-  constructMarkdown,
-  Instructions,
-  instructionsSchema,
-} from "./src/md_constructor.ts";
-import { analyzePDF, mergeDocumentItems } from "./src/pdf_analyzer.ts";
-import { generatePrompt } from "./src/prompt.ts";
+import { analyzePDF } from "./src/pdf_analyzer.ts";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.d.ts";
+import { constructMarkdown, OutputItem } from "./src/md_constructor.ts";
 
 const pdfPath = Deno.args[0];
 if (!pdfPath) {
@@ -21,20 +15,19 @@ if (!openaiApiKey) {
 
 const tempDir = `./output/output_${Date.now()}`;
 await Deno.mkdir(tempDir, { recursive: true });
+const decoder = new TextDecoder();
 
-const { outline, documentItems, textHeight } = await analyzePDF(pdfPath);
+const { outline, documentItems } = await analyzePDF(pdfPath);
 
-const mergedDocumentItems = mergeDocumentItems(documentItems);
-const flattenItems = mergedDocumentItems.flatMap((pageItems, i) =>
-  pageItems.flatMap((items, j) =>
-    items.map((item, k) => ({
+const inputItems = documentItems.flatMap((pageItems, i) =>
+  pageItems.map((item, j) => (
+    {
       ...item,
-      i: `${i}-${j}-${k}`,
-      h: parseFloat((item.h / textHeight).toFixed(3)),
-    }))
-  )
+      i: `${i}-${j}`,
+    }
+  ))
 );
-Deno.writeTextFileSync(`${tempDir}/items.json`, JSON.stringify(flattenItems));
+Deno.writeTextFileSync(`${tempDir}/items.json`, JSON.stringify(inputItems));
 console.log("Items written");
 
 const openai = new OpenAI({
@@ -42,6 +35,7 @@ const openai = new OpenAI({
   apiKey: openaiApiKey,
 });
 
+const prompt = decoder.decode(Deno.readFileSync("./src/prompt.md"));
 const messages: ChatCompletionMessageParam[] = [
   {
     role: "system",
@@ -49,10 +43,14 @@ const messages: ChatCompletionMessageParam[] = [
   },
   {
     role: "user",
-    content: generatePrompt(JSON.stringify({
-      outline,
-      items: flattenItems,
-    })),
+    content: prompt,
+  },
+  {
+    role: "user",
+    content: `Here's the PDF data (JSON):
+\`\`\`json:request.json
+${JSON.stringify({ outline, items: inputItems })}
+\`\`\``,
   },
 ];
 
@@ -94,14 +92,14 @@ while (isStreaming) {
 }
 console.log("API Response written");
 
-const decoder = new TextDecoder();
 const response = decoder.decode(Deno.readFileSync(responseFilePath));
-const jsonResponse = response.match(/{.*}/s)?.[0] ?? "";
+const jsonResponse = response.match(/{.*}/s)?.[0];
 if (!jsonResponse) {
   throw "No JSON response found";
 }
-const instructions: Instructions = JSON.parse(jsonResponse);
+const parsedResponse = JSON.parse(jsonResponse);
+const outputItems: OutputItem[] = parsedResponse.items;
+const markdown = constructMarkdown(inputItems, outputItems);
 
-const markdown = constructMarkdown(instructions, flattenItems);
 Deno.writeTextFileSync(`${tempDir}/output.md`, markdown);
 console.log("Output written");
