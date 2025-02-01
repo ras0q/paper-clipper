@@ -7,6 +7,7 @@ import {
 } from "./src/md_constructor.ts";
 import { analyzePDF, mergeDocumentItems } from "./src/pdf_analyzer.ts";
 import { generatePrompt } from "./src/prompt.ts";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.d.ts";
 
 const pdfPath = Deno.args[0];
 if (!pdfPath) {
@@ -41,36 +42,55 @@ const openai = new OpenAI({
   apiKey: openaiApiKey,
 });
 
-const completion = await openai.chat.completions.create({
-  model: "gemini-2.0-flash-exp",
-  messages: [
-    {
-      role: "system",
-      content: "You are a PDF to Markdown converter.",
-    },
-    {
-      role: "user",
-      content: generatePrompt(JSON.stringify({
-        outline,
-        items: flattenItems,
-      })),
-    },
-  ],
-  stream: true,
-  temperature: 0,
-  response_format: zodResponseFormat(
-    instructionsSchema,
-    "response",
-  ),
-});
+const messages: ChatCompletionMessageParam[] = [
+  {
+    role: "system",
+    content: "You are a PDF to Markdown converter.",
+  },
+  {
+    role: "user",
+    content: generatePrompt(JSON.stringify({
+      outline,
+      items: flattenItems,
+    })),
+  },
+];
 
 const responseFilePath = `${tempDir}/response.json`;
-for await (const chunk of completion) {
-  Deno.writeTextFile(
-    responseFilePath,
-    chunk.choices[0].delta.content ?? "❓",
-    { append: true },
-  );
+let isStreaming = true;
+while (isStreaming) {
+  const completion = await openai.chat.completions.create({
+    model: "gemini-2.0-flash-exp",
+    messages,
+    stream: true,
+    temperature: 0,
+    // response_format: zodResponseFormat(
+    //   instructionsSchema,
+    //   "response",
+    // ),
+  });
+
+  for await (const chunk of completion) {
+    const choice = chunk.choices[0];
+    const { delta, finish_reason } = choice;
+    if (!delta || !delta.content) {
+      console.log("No content in delta", choice);
+      continue;
+    }
+
+    Deno.writeTextFile(responseFilePath, delta.content, { append: true });
+
+    if (finish_reason === "stop") {
+      isStreaming = false;
+    } else if (finish_reason === "length") {
+      const decoder = new TextDecoder();
+      const response = decoder.decode(Deno.readFileSync(responseFilePath));
+      messages.push({ role: "assistant", content: response });
+      console.log("Continuing conversation");
+    } else if (finish_reason) {
+      throw `Unexpected finish_reason: ${finish_reason}`;
+    }
+  }
 }
 console.log("API Response written");
 
