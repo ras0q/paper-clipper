@@ -1,6 +1,6 @@
-import * as esbuild from "npm:esbuild@0.24.2";
-import { denoPlugins } from "jsr:@luca/esbuild-deno-loader@0.11.1";
-import { dirname, fromFileUrl, join, relative } from "jsr:@std/path@1.0.8";
+import * as esbuild from "esbuild";
+import { denoPlugins } from "@luca/esbuild-deno-loader";
+import { dirname, fromFileUrl, join, relative } from "@std/path";
 
 const rootDir = relative(Deno.cwd(), dirname(fromFileUrl(import.meta.url)));
 const srcDir = join(rootDir, "browser-extension");

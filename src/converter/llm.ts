@@ -1,6 +1,6 @@
-import OpenAI from "npm:openai@4.82.0";
+import OpenAI from "openai";
 import { Converter, Input, OutputItem } from "./index.ts";
-import type { ChatCompletionMessageParam } from "npm:openai@4.82.0/resources/chat/completions.d.ts";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.d.ts";
 
 export class LLMConverter implements Converter {
   model: string;
