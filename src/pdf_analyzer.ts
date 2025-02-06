@@ -17,9 +17,12 @@ export const analyzePDF = async (pdfURL: URL) => {
 
   const documentItems: ResolvedItem[][] = [];
   const operationCommands: unknown[][][] = [];
+  const pageHeights: number[] = [];
 
   for (let i = 1; i <= pdfDocument.numPages; i++) {
     const page = await pdfDocument.getPage(i);
+    const pageHeight = page.view[3] - page.view[1];
+    pageHeights.push(pageHeight);
 
     const pageOperators = await page.getOperatorList();
     const pageOperationCommands = pageOperators.fnArray.map((fn, i) => {
@@ -96,7 +99,7 @@ export const analyzePDF = async (pdfURL: URL) => {
     });
   });
 
-  return { outline, documentItems, operationCommands, textHeight };
+  return { outline, documentItems, operationCommands, textHeight, pageHeights };
 };
 
 export type Outline = {

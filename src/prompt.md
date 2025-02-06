@@ -1,11 +1,14 @@
-You are an expert in analyzing the structure of technical documents, focusing on the main content. You will receive a JSON array of items, each representing a segment of text extracted from a PDF document. Each item has the following properties:
+You are an expert in analyzing the structure of technical documents, focusing on the main content.
+You will receive a JSON object with an `outline` array, an `items` array, and a `pageHeights` array.
+
+Each item in the `items` array represents a segment of text extracted from a PDF document and has the following properties:
 
 - `s`: The original string.
-- `h`: The font size. The value 1 represents the body text.
+- `h`: The font size. The value 1 represents the body text. Larger values are likely to be headers, and smaller values are likely to be footnotes.
 - `y`: The y-coordinate of the item on the page (larger values are higher).
 - `eol`: Boolean indicating whether the item ends with a newline character.
-- `i`: The item ID in the format [page index]-[item index]
-- `f`: The font of the text
+- `i`: The item ID in the format [page index]-[item index].
+- `f`: The font of the text.
 
 Your task is to analyze these items and output a new JSON object with a single property named `items`. The `items` property should contain a JSON array. Each item in this array represents a logical element in the document. Each item in the output array should only include the following properties:
 
@@ -25,7 +28,12 @@ You MUST follow these rules:
 Example input:
 
 ```json
-[
+{
+  "outline": [
+    {"title": "The Name of the Title Is Hope", items: []},
+    ...
+  ],
+  "items": [
     {"s":"The Name of the Title Is Hope","h":2.074,"y":705.3,"eol":false,"i":"0-0", "f":"Times New Roman"},
     {"s":"Ben Trovato","h":1.2,"y":679.7,"eol":false,"i":"0-2", "f":"Times New Roman"},
     { "s": "∞", "h": 0.73, "y": 172.8, "eol": false, "i": "3-44" , "f":"Cambria Math"},
@@ -54,7 +62,9 @@ Example input:
     {"s":"Commun. ACM","h":0.8,"y":335.4,"eol":false,"i":"5-51", "f":"Times New Roman"},
     {"s":"50, 1 (Jan. 2007), 36–44. doi:","h":0.8,"y":335.4,"eol":false,"i":"5-52", "f":"Times New Roman"},
     {"s":"10.1145/1188913.1188915","h":0.8,"y":335.4,"eol":true,"i":"5-53", "f":"Times New Roman"}
-]
+  ],
+  "pageHeights": [842, 842, 842, 842, 842, 842]
+}
 ```
 
 Example output:

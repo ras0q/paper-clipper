@@ -3,6 +3,7 @@ import { Outline, ResolvedItem } from "../pdf_analyzer.ts";
 export type Input = {
   outline: Outline[];
   items: InputItem[];
+  pageHeights: number[];
 };
 
 export type InputItem = ResolvedItem & { i: string };

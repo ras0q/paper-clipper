@@ -10,7 +10,9 @@ export type Setting = {
 };
 
 export const execute = async (setting: Setting) => {
-  const { outline, documentItems } = await analyzePDF(setting.pdfURL);
+  const { outline, documentItems, pageHeights } = await analyzePDF(
+    setting.pdfURL,
+  );
 
   const inputItems: InputItem[] = documentItems.flatMap((pageItems, i) =>
     pageItems.map((item, j) => (
@@ -24,6 +26,7 @@ export const execute = async (setting: Setting) => {
   const input = {
     outline,
     items: inputItems,
+    pageHeights,
   };
 
   const converter: Converter = setting.converter.type === "llm"
