@@ -9,10 +9,10 @@ export type ResolvedItem = {
   eol: boolean;
 };
 
-export const analyzePDF = async (path: string) => {
+export const analyzePDF = async (pdfURL: URL) => {
   // pdfjs.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
 
-  const pdfDocument = await pdfjs.getDocument(path).promise;
+  const pdfDocument = await pdfjs.getDocument(pdfURL).promise;
   const outline = simplifyOutline(await pdfDocument.getOutline());
 
   const documentItems: ResolvedItem[][] = [];

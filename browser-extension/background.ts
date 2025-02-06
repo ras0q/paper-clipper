@@ -9,7 +9,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   }
 
   const setting: Setting = {
-    pdfPath: url.pathname,
+    pdfURL: url,
     converter: {
       type: "llm",
       model: "gemini-2.0-flash-exp",

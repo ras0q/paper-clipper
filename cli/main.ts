@@ -1,3 +1,4 @@
+import { resolve } from "jsr:@std/path@1.0.8";
 import { execute, Setting } from "../src/executor.ts";
 
 const pdfPath = Deno.args[0];
@@ -11,7 +12,7 @@ if (!openaiApiKey) {
 }
 
 const setting: Setting = {
-  pdfPath: pdfPath,
+  pdfURL: new URL(resolve(Deno.cwd(), pdfPath)),
   converter: {
     type: "llm",
     model: "gemini-2.0-flash-exp",

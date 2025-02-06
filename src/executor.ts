@@ -5,7 +5,7 @@ import { constructMarkdown } from "./md_constructor.ts";
 import { analyzePDF } from "./pdf_analyzer.ts";
 
 export type Setting = {
-  pdfPath: string;
+  pdfURL: URL;
   converter: {
     type: "llm";
     model: string;
@@ -15,7 +15,7 @@ export type Setting = {
 };
 
 export const execute = async (setting: Setting) => {
-  const { outline, documentItems } = await analyzePDF(setting.pdfPath);
+  const { outline, documentItems } = await analyzePDF(setting.pdfURL);
 
   const inputItems: InputItem[] = documentItems.flatMap((pageItems, i) =>
     pageItems.map((item, j) => (
