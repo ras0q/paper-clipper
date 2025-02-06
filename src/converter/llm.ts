@@ -43,47 +43,48 @@ ${JSON.stringify(input)}
 
     let isStreaming = true;
     let outputText = "";
-    using cleanup = new DisposableStack();
-    cleanup.defer(() => {
-      this.onFinish(outputText);
-    });
 
-    while (isStreaming) {
-      const completion = await this.client.chat.completions.create({
-        model: this.model,
-        messages,
-        stream: true,
-        temperature: 0,
-      });
+    // TODO: want to use "using"
+    try {
+      while (isStreaming) {
+        const completion = await this.client.chat.completions.create({
+          model: this.model,
+          messages,
+          stream: true,
+          temperature: 0,
+        });
 
-      for await (const chunk of completion) {
-        const choice = chunk.choices[0];
-        const { delta, finish_reason } = choice;
-        if (!delta || !delta.content) {
-          console.log("No content in delta", choice);
-          continue;
-        }
+        for await (const chunk of completion) {
+          const choice = chunk.choices[0];
+          const { delta, finish_reason } = choice;
+          if (!delta || !delta.content) {
+            console.log("No content in delta", choice);
+            continue;
+          }
 
-        outputText += delta.content;
+          outputText += delta.content;
 
-        if (finish_reason === "stop") {
-          isStreaming = false;
-        } else if (finish_reason === "length") {
-          messages.push({ role: "assistant", content: outputText });
-          console.log("Continuing conversation");
-        } else if (finish_reason) {
-          throw `Unexpected finish_reason: ${finish_reason}`;
+          if (finish_reason === "stop") {
+            isStreaming = false;
+          } else if (finish_reason === "length") {
+            messages.push({ role: "assistant", content: outputText });
+            console.log("Continuing conversation");
+          } else if (finish_reason) {
+            throw `Unexpected finish_reason: ${finish_reason}`;
+          }
         }
       }
-    }
 
-    const jsonResponse = outputText.match(/{.*}/s)?.[0];
-    if (!jsonResponse) {
-      throw "No JSON response found";
-    }
-    const parsedResponse = JSON.parse(jsonResponse);
-    const outputItems: OutputItem[] = parsedResponse.items;
+      const jsonResponse = outputText.match(/{.*}/s)?.[0];
+      if (!jsonResponse) {
+        throw "No JSON response found";
+      }
+      const parsedResponse = JSON.parse(jsonResponse);
+      const outputItems: OutputItem[] = parsedResponse.items;
 
-    return outputItems;
+      return outputItems;
+    } finally {
+      this.onFinish(outputText);
+    }
   }
 }
