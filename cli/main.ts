@@ -22,7 +22,7 @@ const setting: Setting = {
     apiURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
     apiKey: openaiApiKey,
     onFinish: (output: string) => {
-      Deno.writeTextFile(`${tempDir}/output.txt`, output);
+      Deno.writeTextFile(`${tempDir}/output.md`, output);
     },
   },
 };
@@ -38,5 +38,5 @@ await Promise.all([
     `${tempDir}/output_items.json`,
     JSON.stringify(outputItems, null, 2),
   ),
-  Deno.writeTextFile(`${tempDir}/output.md`, markdown),
+  Deno.writeTextFile(`${tempDir}/converted.md`, markdown),
 ]);
