@@ -1,12 +1,15 @@
 import { InputItem } from "./converter/index.ts";
 import { Converter, NopeConverter } from "./converter/index.ts";
 import { LLMConverter, LLMConverterParams } from "./converter/llm.ts";
+import { RuleBasedConverter } from "./converter/rulebased.ts";
 import { constructMarkdown } from "./md_constructor.ts";
 import { analyzePDF } from "./pdf_analyzer.ts";
 
 export type Setting = {
   pdfURL: URL;
-  converter: { type: "llm" } & LLMConverterParams;
+  converter:
+    | ({ type: "llm" } & LLMConverterParams)
+    | { type: "rule" };
 };
 
 export const execute = async (setting: Setting) => {
@@ -29,8 +32,11 @@ export const execute = async (setting: Setting) => {
     pageHeights,
   };
 
-  const converter: Converter = setting.converter.type === "llm"
+  const { type } = setting.converter;
+  const converter: Converter = type === "llm"
     ? new LLMConverter(setting.converter)
+    : type === "rule"
+    ? new RuleBasedConverter()
     : new NopeConverter();
 
   const outputItems = await converter.convertForMarkdown(input);

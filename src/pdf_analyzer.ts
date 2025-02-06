@@ -45,6 +45,10 @@ export const analyzePDF = async (pdfURL: URL) => {
     const pageItems: TextItem[] = [];
     for (const item of textItems) {
       if (item.height === 0 && item.str.length === 0) {
+        if (!item.hasEOL) continue;
+
+        const lastItem = pageItems[pageItems.length - 1];
+        if (lastItem) lastItem.hasEOL = true;
         continue;
       }
 
@@ -54,7 +58,8 @@ export const analyzePDF = async (pdfURL: URL) => {
       }
 
       const lastItem = pageItems[pageItems.length - 1];
-      const isSameBlock = item.height === 0 || item.height === lastItem.height;
+      const isSameBlock = item.height === 0 ||
+        item.height === lastItem.height && item.fontName === lastItem.fontName;
       if (!isSameBlock) {
         pageItems.push(item);
         continue;

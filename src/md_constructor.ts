@@ -12,8 +12,9 @@ export const constructMarkdown = (
 
     switch (outputItem.ids.length) {
       case 1: {
-        return inputItems.find((inputItem) => inputItem.i === outputItem.ids[0])
-          ?.s ?? "";
+        const item = inputItems.find(({ i }) => i === outputItem.ids[0]);
+        if (!item) return "";
+        return item.s + (item.eol ? "\n" : "");
       }
       case 2: {
         const [startID, endID] = outputItem.ids;
@@ -37,13 +38,16 @@ export const constructMarkdown = (
             ids.push(`${endPage}-${i}`);
           }
         }
-        return ids.map((id) => {
-          const item = inputItems.find((inputItem) => inputItem.i === id);
-          return item?.s ?? "";
-        }).join("");
+        const items = ids.flatMap((id) =>
+          inputItems.find((inputItem) => inputItem.i === id) ?? []
+        );
+
+        return items.map((item) => item.s + (item.eol ? "\n" : "")).join("");
       }
       default: {
         throw new Error("Not implemented");
       }
     }
-  }).join("\n");
+  })
+    .map((line) => line.endsWith("\n") ? line : line + " ")
+    .join("");
