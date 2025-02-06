@@ -2,22 +2,25 @@ import OpenAI from "openai";
 import { Converter, Input, OutputItem } from "./index.ts";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.d.ts";
 
+export type LLMConverterParams = {
+  model: string;
+  apiURL: string;
+  apiKey: string;
+  onFinish?: (output: string) => void;
+};
+
 export class LLMConverter implements Converter {
   model: string;
   client: OpenAI;
-  onFinish: (output: string) => void = () => {};
+  onFinish: (output: string) => void;
 
-  constructor(params: {
-    model: string;
-    apiURL: string;
-    apiKey: string;
-    onFinish?: (output: string) => void;
-  }) {
+  constructor(params: LLMConverterParams) {
     this.model = params.model;
     this.client = new OpenAI({
       baseURL: params.apiURL,
       apiKey: params.apiKey,
     });
+    this.onFinish = params.onFinish || (() => {});
   }
 
   async convertForMarkdown(input: Input): Promise<OutputItem[]> {

@@ -11,6 +11,9 @@ if (!openaiApiKey) {
   throw "Please provide an OpenAI API key";
 }
 
+const tempDir = `./output/output_${Date.now()}`;
+await Deno.mkdir(tempDir, { recursive: true });
+
 const setting: Setting = {
   pdfURL: new URL(resolve(Deno.cwd(), pdfPath)),
   converter: {
@@ -18,13 +21,14 @@ const setting: Setting = {
     model: "gemini-2.0-flash-exp",
     apiURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
     apiKey: openaiApiKey,
+    onFinish: (output: string) => {
+      Deno.writeTextFile(`${tempDir}/output.txt`, output);
+    },
   },
 };
 
 const { inputItems, outputItems, markdown } = await execute(setting);
 
-const tempDir = `./output/output_${Date.now()}`;
-await Deno.mkdir(tempDir, { recursive: true });
 await Promise.all([
   Deno.writeTextFile(
     `${tempDir}/input_items.json`,
