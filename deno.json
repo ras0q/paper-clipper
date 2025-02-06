@@ -1,1 +1,10 @@
-{}
+{
+  "compilerOptions": {
+    "types": [
+      "chrome-types"
+    ]
+  },
+  "imports": {
+    "chrome-types": "npm:chrome-types@^0.1.335"
+  }
+}

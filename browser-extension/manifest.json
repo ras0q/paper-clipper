@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "PDF拡張機能",
+  "version": "1.0",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["*://*/*.pdf"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "PDF拡張機能"
+  }
+}

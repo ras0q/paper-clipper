@@ -1,9 +1,5 @@
+import { OutputItem } from "./converter/index.ts";
 import { ResolvedItem } from "./pdf_analyzer.ts";
-
-export type OutputItem = {
-  ids: string[];
-  text?: string;
-};
 
 export const constructMarkdown = (
   inputItems: (ResolvedItem & { i: string })[],
